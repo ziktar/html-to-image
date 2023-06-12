@@ -38,9 +38,12 @@ export async function toCanvas<T extends HTMLElement>(
   const ratio = options.pixelRatio || getPixelRatio()
   const canvasWidth = options.canvasWidth || width
   const canvasHeight = options.canvasHeight || height
+  const margin = options.margin || 0
+  const canvasBackgroundColor =
+    options.marginBackgroundColor || options.backgroundColor
 
-  canvas.width = canvasWidth * ratio
-  canvas.height = canvasHeight * ratio
+  canvas.width = canvasWidth * ratio + 2 * margin
+  canvas.height = canvasHeight * ratio + 2 * margin
 
   if (!options.skipAutoScale) {
     checkCanvasDimensions(canvas)
@@ -48,12 +51,18 @@ export async function toCanvas<T extends HTMLElement>(
   canvas.style.width = `${canvasWidth}`
   canvas.style.height = `${canvasHeight}`
 
-  if (options.backgroundColor) {
-    context.fillStyle = options.backgroundColor
+  if (canvasBackgroundColor) {
+    context.fillStyle = canvasBackgroundColor
     context.fillRect(0, 0, canvas.width, canvas.height)
   }
 
-  context.drawImage(img, 0, 0, canvas.width, canvas.height)
+  context.drawImage(
+    img,
+    margin,
+    margin,
+    canvas.width - 2 * margin,
+    canvas.height - 2 * margin,
+  )
 
   return canvas
 }

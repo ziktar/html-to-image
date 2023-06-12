@@ -8,9 +8,17 @@ export interface Options {
    */
   height?: number
   /**
-   * A string value for the background color, any valid CSS color value.
+   * Margin size, in pixels, to be applied around each image
+   */
+  margin?: number
+  /**
+   * A string value for the background color of the primary image, any valid CSS color value.
    */
   backgroundColor?: string
+  /**
+   * A string value for the background color of the image margin, any valid CSS color value.
+   */
+  marginBackgroundColor?: string
   /**
    * Width in pixels to be applied to canvas on export.
    */
