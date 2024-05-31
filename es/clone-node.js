@@ -1,5 +1,5 @@
 import { clonePseudoElements } from './clone-pseudos';
-import { createImage, toArray, isInstanceOfElement } from './util';
+import { createImage, getStyleProperties, toArray, isInstanceOfElement } from './util';
 import { getMimeType } from './mimes';
 import { resourceToDataURL } from './dataurl';
 async function cloneCanvasElement(canvas) {
@@ -28,7 +28,9 @@ async function cloneIFrameElement(iframe) {
     var _a;
     try {
         if ((_a = iframe === null || iframe === void 0 ? void 0 : iframe.contentDocument) === null || _a === void 0 ? void 0 : _a.body) {
-            return (await cloneNode(iframe.contentDocument.body, {}, true));
+            let clonedIframe = (await cloneNode(iframe.contentDocument.body, { stripStaticAndFixed: true }, true));
+            clonedIframe.style.setProperty('position', 'relative');
+            return clonedIframe;
         }
     }
     catch (_b) {
@@ -75,7 +77,7 @@ async function cloneChildren(nativeNode, clonedNode, options) {
     }), Promise.resolve());
     return clonedNode;
 }
-function cloneCSSStyle(nativeNode, clonedNode) {
+function cloneCSSStyle(nativeNode, clonedNode, stripStaticAndFixed) {
     const targetStyle = clonedNode.style;
     if (!targetStyle) {
         return;
@@ -86,16 +88,26 @@ function cloneCSSStyle(nativeNode, clonedNode) {
         targetStyle.transformOrigin = sourceStyle.transformOrigin;
     }
     else {
-        toArray(sourceStyle).forEach((name) => {
+        const nodeIsIFrame = isInstanceOfElement(nativeNode, HTMLIFrameElement);
+        getStyleProperties().forEach((name) => {
             let value = sourceStyle.getPropertyValue(name);
+            if (!value) {
+                return;
+            }
             if (name === 'font-size' && value.endsWith('px')) {
                 const reducedFont = Math.floor(parseFloat(value.substring(0, value.length - 2))) - 0.1;
                 value = `${reducedFont}px`;
             }
-            if (isInstanceOfElement(nativeNode, HTMLIFrameElement) &&
-                name === 'display' &&
-                value === 'inline') {
+            if (nodeIsIFrame && name === 'display' && value === 'inline') {
                 value = 'block';
+            }
+            if (stripStaticAndFixed && (name === 'position' && (value === 'static' || value === 'fixed'))) {
+                if (nativeNode.style.position) {
+                    value = 'absolute';
+                }
+                else {
+                    return;
+                }
             }
             if (name === 'd' && clonedNode.getAttribute('d')) {
                 value = `path(${clonedNode.getAttribute('d')})`;
@@ -121,9 +133,9 @@ function cloneSelectValue(nativeNode, clonedNode) {
         }
     }
 }
-function decorate(nativeNode, clonedNode) {
+function decorate(nativeNode, clonedNode, stripStaticAndFixed) {
     if (isInstanceOfElement(clonedNode, Element)) {
-        cloneCSSStyle(nativeNode, clonedNode);
+        cloneCSSStyle(nativeNode, clonedNode, stripStaticAndFixed);
         clonePseudoElements(nativeNode, clonedNode);
         cloneInputValue(nativeNode, clonedNode);
         cloneSelectValue(nativeNode, clonedNode);
@@ -171,10 +183,18 @@ export async function cloneNode(node, options, isRoot) {
     if (!isRoot && options.filter && !options.filter(node)) {
         return null;
     }
+    if (node.tagName === 'SCRIPT') {
+        return null;
+    }
+    if (isInstanceOfElement(node, HTMLIFrameElement)) {
+        // cloning the iframe clones its children too, so stop here
+        return Promise.resolve(node)
+            .then((clonedNode) => cloneSingleNode(clonedNode, options));
+    }
     return Promise.resolve(node)
         .then((clonedNode) => cloneSingleNode(clonedNode, options))
         .then((clonedNode) => cloneChildren(node, clonedNode, options))
-        .then((clonedNode) => decorate(node, clonedNode))
+        .then((clonedNode) => decorate(node, clonedNode, options.stripStaticAndFixed))
         .then((clonedNode) => ensureSVGSymbols(clonedNode, options));
 }
 //# sourceMappingURL=clone-node.js.map

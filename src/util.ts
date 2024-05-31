@@ -65,6 +65,50 @@ export function toArray<T>(arrayLike: any): T[] {
   return arr
 }
 
+let styleProps: string[] | null = null
+export function getStyleProperties(): string[] {
+  if (styleProps) {
+    return styleProps
+  }
+
+  styleProps = toArray(
+    window.getComputedStyle(document.documentElement),
+  ).filter((prop) => {
+    const strProp = String(prop)
+    if (
+      strProp.startsWith('animation') ||
+      strProp.startsWith('scroll') ||
+      strProp.startsWith('transition') ||
+      strProp.startsWith('view-timeline')
+    ) {
+      return false
+    }
+
+    switch (strProp) {
+      case 'buffered-rendering':
+      case 'cursor':
+      case 'user-select':
+      case 'overscroll-behavior-block':
+      case 'overscroll-behavior-inline':
+      case 'pointer-events':
+      case 'ruby-position':
+      case 'speak':
+      case 'timeline-scope':
+      case 'touch-action':
+      case 'will-change':
+      case '-webkit-tap-highlight-color':
+      case '-webkit-user-drag':
+      case '-webkit-user-modify':
+        return false
+
+      default:
+        return true
+    }
+  }) as string[]
+
+  return styleProps
+}
+
 function px(node: HTMLElement, styleProperty: string) {
   const win = node.ownerDocument.defaultView || window
   const val = win.getComputedStyle(node).getPropertyValue(styleProperty)
@@ -184,8 +228,14 @@ export function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.decode = () => resolve(img) as any
-    img.onload = () => resolve(img)
-    img.onerror = reject
+    img.onload = () => {
+      url.startsWith('blob') && URL.revokeObjectURL(url)
+      return resolve(img)
+    }
+    img.onerror = (err) => {
+      url.startsWith('blob') && URL.revokeObjectURL(url)
+      reject(err)
+    }
     img.crossOrigin = 'anonymous'
     img.decoding = 'async'
     img.src = url
@@ -193,6 +243,18 @@ export function createImage(url: string): Promise<HTMLImageElement> {
 }
 
 export async function svgToDataURL(svg: SVGElement): Promise<string> {
+  // Blob is faster! Allows unlimited HTML size! But fails on Chromium/Webkit browsers claiming it's a tainted canvas.
+  if (
+    navigator.userAgent.match(/Firefox\/(\d+)\./) ||
+    (navigator.userAgent.match(/Safari\/(\d+)\./) &&
+      !navigator.userAgent.match(/Chrome\/(\d+)\./))
+  ) {
+    return Promise.resolve()
+      .then(() => new XMLSerializer().serializeToString(svg))
+      .then((svg) => new Blob([svg], { type: 'image/svg+xml' }))
+      .then((blob) => URL.createObjectURL(blob))
+  }
+
   return Promise.resolve()
     .then(() => new XMLSerializer().serializeToString(svg))
     .then(encodeURIComponent)
@@ -208,6 +270,7 @@ export async function nodeToDataURL(
   const svg = document.createElementNS(xmlns, 'svg')
   const foreignObject = document.createElementNS(xmlns, 'foreignObject')
 
+  svg.setAttribute('crossOrigin', 'anonymous')
   svg.setAttribute('width', `${width}`)
   svg.setAttribute('height', `${height}`)
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
@@ -224,12 +287,41 @@ export async function nodeToDataURL(
 }
 
 export const isInstanceOfElement = <
-  T extends typeof Element | typeof HTMLElement | typeof SVGImageElement,
+  T extends
+    | typeof Element
+    | typeof HTMLElement
+    | typeof SVGImageElement
+    | typeof HTMLCanvasElement
+    | typeof HTMLIFrameElement
+    | typeof HTMLVideoElement
+    | typeof HTMLTextAreaElement
+    | typeof HTMLInputElement
+    | typeof HTMLSelectElement,
 >(
   node: Element | HTMLElement | SVGImageElement,
   instance: T,
 ): node is T['prototype'] => {
   if (node instanceof instance) return true
+
+  const nodeName = 'nodeName'
+  if (instance === HTMLCanvasElement) {
+    return node[nodeName] === 'CANVAS'
+  }
+  if (instance === HTMLIFrameElement) {
+    return node[nodeName] === 'IFRAME'
+  }
+  if (instance === HTMLVideoElement) {
+    return node[nodeName] === 'VIDEO'
+  }
+  if (instance === HTMLTextAreaElement) {
+    return node[nodeName] === 'TEXTAREA'
+  }
+  if (instance === HTMLInputElement) {
+    return node[nodeName] === 'INPUT'
+  }
+  if (instance === HTMLSelectElement) {
+    return node[nodeName] === 'INPUT'
+  }
 
   const nodePrototype = Object.getPrototypeOf(node)
 

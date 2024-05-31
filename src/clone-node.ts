@@ -1,6 +1,11 @@
 import type { Options } from './types'
 import { clonePseudoElements } from './clone-pseudos'
-import { createImage, toArray, isInstanceOfElement } from './util'
+import {
+  createImage,
+  getStyleProperties,
+  toArray,
+  isInstanceOfElement,
+} from './util'
 import { getMimeType } from './mimes'
 import { resourceToDataURL } from './dataurl'
 
@@ -32,11 +37,13 @@ async function cloneVideoElement(video: HTMLVideoElement, options: Options) {
 async function cloneIFrameElement(iframe: HTMLIFrameElement) {
   try {
     if (iframe?.contentDocument?.body) {
-      return (await cloneNode(
+      const clonedIframe = (await cloneNode(
         iframe.contentDocument.body,
-        {},
+        { stripStaticAndFixed: true },
         true,
       )) as HTMLBodyElement
+      clonedIframe.style.setProperty('position', 'relative')
+      return clonedIframe
     }
   } catch {
     // Failed to clone iframe
@@ -107,7 +114,11 @@ async function cloneChildren<T extends HTMLElement>(
   return clonedNode
 }
 
-function cloneCSSStyle<T extends HTMLElement>(nativeNode: T, clonedNode: T) {
+function cloneCSSStyle<T extends HTMLElement>(
+  nativeNode: T,
+  clonedNode: T,
+  stripStaticAndFixed: boolean | undefined,
+) {
   const targetStyle = clonedNode.style
   if (!targetStyle) {
     return
@@ -118,26 +129,39 @@ function cloneCSSStyle<T extends HTMLElement>(nativeNode: T, clonedNode: T) {
     targetStyle.cssText = sourceStyle.cssText
     targetStyle.transformOrigin = sourceStyle.transformOrigin
   } else {
-    toArray<string>(sourceStyle).forEach((name) => {
+    const nodeIsIFrame = isInstanceOfElement(nativeNode, HTMLIFrameElement)
+    getStyleProperties().forEach((name) => {
       let value = sourceStyle.getPropertyValue(name)
+      if (!value) {
+        return
+      }
+
       if (name === 'font-size' && value.endsWith('px')) {
         const reducedFont =
           Math.floor(parseFloat(value.substring(0, value.length - 2))) - 0.1
         value = `${reducedFont}px`
       }
 
-      if (
-        isInstanceOfElement(nativeNode, HTMLIFrameElement) &&
-        name === 'display' &&
-        value === 'inline'
-      ) {
+      if (nodeIsIFrame && name === 'display' && value === 'inline') {
         value = 'block'
       }
-      
+
+      if (
+        stripStaticAndFixed &&
+        name === 'position' &&
+        (value === 'static' || value === 'fixed')
+      ) {
+        if (nativeNode.style.position) {
+          value = 'absolute'
+        } else {
+          return
+        }
+      }
+
       if (name === 'd' && clonedNode.getAttribute('d')) {
         value = `path(${clonedNode.getAttribute('d')})`
       }
-      
+
       targetStyle.setProperty(
         name,
         value,
@@ -170,9 +194,13 @@ function cloneSelectValue<T extends HTMLElement>(nativeNode: T, clonedNode: T) {
   }
 }
 
-function decorate<T extends HTMLElement>(nativeNode: T, clonedNode: T): T {
+function decorate<T extends HTMLElement>(
+  nativeNode: T,
+  clonedNode: T,
+  stripStaticAndFixed: boolean | undefined,
+): T {
   if (isInstanceOfElement(clonedNode, Element)) {
-    cloneCSSStyle(nativeNode, clonedNode)
+    cloneCSSStyle(nativeNode, clonedNode, stripStaticAndFixed)
     clonePseudoElements(nativeNode, clonedNode)
     cloneInputValue(nativeNode, clonedNode)
     cloneSelectValue(nativeNode, clonedNode)
@@ -236,10 +264,22 @@ export async function cloneNode<T extends HTMLElement>(
   if (!isRoot && options.filter && !options.filter(node)) {
     return null
   }
+  if (node.tagName === 'SCRIPT') {
+    return null
+  }
+
+  if (isInstanceOfElement(node, HTMLIFrameElement)) {
+    // cloning the iframe clones its children too, so stop here
+    return Promise.resolve(node).then(
+      (clonedNode) => cloneSingleNode(clonedNode, options) as Promise<T>,
+    )
+  }
 
   return Promise.resolve(node)
     .then((clonedNode) => cloneSingleNode(clonedNode, options) as Promise<T>)
     .then((clonedNode) => cloneChildren(node, clonedNode, options))
-    .then((clonedNode) => decorate(node, clonedNode))
+    .then((clonedNode) =>
+      decorate(node, clonedNode, options.stripStaticAndFixed),
+    )
     .then((clonedNode) => ensureSVGSymbols(clonedNode, options))
 }

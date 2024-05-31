@@ -47,6 +47,40 @@ export function toArray(arrayLike) {
     }
     return arr;
 }
+let styleProps = null;
+export function getStyleProperties() {
+    if (styleProps) {
+        return styleProps;
+    }
+    styleProps = toArray(window.getComputedStyle(document.documentElement)).filter(prop => {
+        const strProp = String(prop);
+        if (strProp.startsWith('animation')
+            || strProp.startsWith('scroll')
+            || strProp.startsWith('transition')
+            || strProp.startsWith('view-timeline')) {
+            return false;
+        }
+        switch (strProp) {
+            case "buffered-rendering":
+            case "cursor":
+            case "user-select":
+            case "overscroll-behavior-block":
+            case "overscroll-behavior-inline":
+            case "pointer-events":
+            case "ruby-position":
+            case "speak":
+            case "timeline-scope":
+            case "touch-action":
+            case "will-change":
+            case "-webkit-tap-highlight-color":
+            case "-webkit-user-drag":
+            case "-webkit-user-modify":
+                return false;
+        }
+        return true;
+    });
+    return styleProps;
+}
 function px(node, styleProperty) {
     const win = node.ownerDocument.defaultView || window;
     const val = win.getComputedStyle(node).getPropertyValue(styleProperty);
@@ -137,14 +171,27 @@ export function createImage(url) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.decode = () => resolve(img);
-        img.onload = () => resolve(img);
-        img.onerror = reject;
+        img.onload = () => {
+            url.startsWith('blob') && URL.revokeObjectURL(url);
+            return resolve(img);
+        };
+        img.onerror = (err) => {
+            url.startsWith('blob') && URL.revokeObjectURL(url);
+            reject(err);
+        };
         img.crossOrigin = 'anonymous';
         img.decoding = 'async';
         img.src = url;
     });
 }
 export async function svgToDataURL(svg) {
+    // Blob is faster! Allows unlimited HTML size! But fails on Chromium/Webkit browsers claiming it's a tainted canvas.
+    if (navigator.userAgent.match(/Firefox\/(\d+)\./) || (navigator.userAgent.match(/Safari\/(\d+)\./) && !navigator.userAgent.match(/Chrome\/(\d+)\./))) {
+        return Promise.resolve()
+            .then(() => new XMLSerializer().serializeToString(svg))
+            .then((svg) => new Blob([svg], { type: 'image/svg+xml' }))
+            .then((blob) => URL.createObjectURL(blob));
+    }
     return Promise.resolve()
         .then(() => new XMLSerializer().serializeToString(svg))
         .then(encodeURIComponent)
@@ -154,6 +201,7 @@ export async function nodeToDataURL(node, width, height) {
     const xmlns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(xmlns, 'svg');
     const foreignObject = document.createElementNS(xmlns, 'foreignObject');
+    svg.setAttribute('crossOrigin', 'anonymous');
     svg.setAttribute('width', `${width}`);
     svg.setAttribute('height', `${height}`);
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -169,6 +217,25 @@ export async function nodeToDataURL(node, width, height) {
 export const isInstanceOfElement = (node, instance) => {
     if (node instanceof instance)
         return true;
+    const nodeName = 'nodeName';
+    if (instance === HTMLCanvasElement) {
+        return node[nodeName] === 'CANVAS';
+    }
+    if (instance === HTMLIFrameElement) {
+        return node[nodeName] === 'IFRAME';
+    }
+    if (instance === HTMLVideoElement) {
+        return node[nodeName] === 'VIDEO';
+    }
+    if (instance === HTMLTextAreaElement) {
+        return node[nodeName] === 'TEXTAREA';
+    }
+    if (instance === HTMLInputElement) {
+        return node[nodeName] === 'INPUT';
+    }
+    if (instance === HTMLSelectElement) {
+        return node[nodeName] === 'INPUT';
+    }
     const nodePrototype = Object.getPrototypeOf(node);
     if (nodePrototype === null)
         return false;

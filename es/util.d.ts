@@ -3,6 +3,7 @@ export declare function resolveUrl(url: string, baseUrl: string | null): string;
 export declare const uuid: () => string;
 export declare function delay<T>(ms: number): (args: T) => Promise<T>;
 export declare function toArray<T>(arrayLike: any): T[];
+export declare function getStyleProperties(): string[];
 export declare function getImageSize(targetNode: HTMLElement, options?: Options): {
     width: number;
     height: number;
@@ -22,4 +23,22 @@ export declare const isInstanceOfElement: <T extends {
 } | {
     new (): SVGImageElement;
     prototype: SVGImageElement;
+} | {
+    new (): HTMLCanvasElement;
+    prototype: HTMLCanvasElement;
+} | {
+    new (): HTMLIFrameElement;
+    prototype: HTMLIFrameElement;
+} | {
+    new (): HTMLVideoElement;
+    prototype: HTMLVideoElement;
+} | {
+    new (): HTMLTextAreaElement;
+    prototype: HTMLTextAreaElement;
+} | {
+    new (): HTMLInputElement;
+    prototype: HTMLInputElement;
+} | {
+    new (): HTMLSelectElement;
+    prototype: HTMLSelectElement;
 }>(node: Element | HTMLElement | SVGImageElement, instance: T) => node is T["prototype"];

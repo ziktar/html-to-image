@@ -6,6 +6,12 @@ import { getImageSize, getPixelRatio, createImage, canvasToBlob, nodeToDataURL, 
 export async function toSvg(node, options = {}) {
     const { width, height } = getImageSize(node, options);
     const clonedNode = (await cloneNode(node, options, true));
+    if (options.embedStyle) {
+        const styleNode = document.createElement('style');
+        const styleContent = document.createTextNode(options.embedStyle);
+        styleNode.appendChild(styleContent);
+        clonedNode.appendChild(styleNode);
+    }
     await embedWebFonts(clonedNode, options);
     await embedImages(clonedNode, options);
     applyStyle(clonedNode, options);

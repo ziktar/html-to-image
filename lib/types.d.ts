@@ -32,6 +32,10 @@ export interface Options {
      */
     style?: Partial<CSSStyleDeclaration>;
     /**
+     * Text to embed as a CSS Style before rendering
+     */
+    embedStyle?: string;
+    /**
      * A function taking DOM node as argument. Should return `true` if passed
      * node should be included in the output. Excluding node means excluding
      * it's children as well.
@@ -91,4 +95,5 @@ export interface Options {
      *
      */
     fetchRequestInit?: RequestInit;
+    stripStaticAndFixed?: boolean;
 }
